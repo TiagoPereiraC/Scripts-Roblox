@@ -117,6 +117,24 @@ local function randomOffset(magnitude)
     )
 end
 
+-- When wallbang is active, find the first surface the bullet would physically
+-- hit on its way to the target so the hit position looks server-plausible.
+local function getWallbangHitPos(origin, targetHead)
+    local direction = targetHead.Position - origin
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    local character = player.Character
+    rayParams.FilterDescendantsInstances = character and {character} or {}
+
+    local result = workspace:Raycast(origin, direction, rayParams)
+    if result then
+        -- Return the surface hit point with a tiny offset toward the target
+        return result.Position + direction.Unit * 0.1 + randomOffset(0.1)
+    end
+    -- No obstruction found — just use the head position normally
+    return targetHead.Position + randomOffset(0.15)
+end
+
 local function fireClosestHeadshot()
     local enemies = workspace:FindFirstChild("Enemies")
     local shootRemote = Remotes:FindFirstChild("ShootEnemy")
@@ -127,16 +145,22 @@ local function fireClosestHeadshot()
     local targetZombie = getAimedZombie(enemies) or getClosestZombie(enemies, rootPart.Position)
     local targetHead = targetZombie and targetZombie:FindFirstChild("Head")
 
-    if targetZombie and targetHead and (wallbang or isHeadVisible(targetHead, rootPart)) then
-        local weapon = getEquippedWeaponName()
-        local hitPos = targetHead.Position + randomOffset(0.15)
-        local dmgMult = 0.5 + (math.random() - 0.5) * 0.04
-        task.delay(math.random() * 0.03, function()
-            pcall(function()
-                shootRemote:FireServer(targetZombie, targetHead, hitPos, dmgMult, weapon)
-            end)
+    if not (targetZombie and targetHead) then return end
+    if not wallbang and not isHeadVisible(targetHead, rootPart) then return end
+
+    local weapon = getEquippedWeaponName()
+    -- Use plausible hit position: wall surface when wallbang, head directly when clear LOS
+    local hitPos = wallbang
+        and getWallbangHitPos(rootPart.Position, targetHead)
+        or targetHead.Position + randomOffset(0.15)
+    local dmgMult = 0.5 + (math.random() - 0.5) * 0.04
+    -- Add slight extra delay when shooting through walls to reduce remote rate
+    local baseDelay = wallbang and (0.05 + math.random() * 0.08) or (math.random() * 0.03)
+    task.delay(baseDelay, function()
+        pcall(function()
+            shootRemote:FireServer(targetZombie, targetHead, hitPos, dmgMult, weapon)
         end)
-    end
+    end)
 end
 
 -- Headshot on Fire input handler
@@ -148,7 +172,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     task.spawn(function()
         while mouseHeld and manualHeadshot do
             fireClosestHeadshot()
-            task.wait(shootDelay + (math.random() - 0.5) * shootDelay * 0.25)
+            -- Wallbang uses a slower rate to avoid anticheat flag accumulation
+            local wait = wallbang
+                and (0.18 + math.random() * 0.12)
+                or (shootDelay + (math.random() - 0.5) * shootDelay * 0.25)
+            task.wait(wait)
         end
     end)
 end)
