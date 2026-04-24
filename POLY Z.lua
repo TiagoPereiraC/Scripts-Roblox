@@ -56,7 +56,7 @@ local autoKill = false
 local shootDelay = 0.1
 local manualHeadshot = false
 local mouse = player:GetMouse()
-local lastManualShot = 0
+local Camera = workspace.CurrentCamera
 
 local function getZombieContainer()
     return workspace:FindFirstChild("Zombies") or workspace:FindFirstChild("Enemies")
@@ -97,6 +97,27 @@ local function isZombieAlive(zombie)
     return head ~= nil
 end
 
+-- Line-of-sight check: returns true only if head is not blocked by terrain/walls
+local function isHeadVisible(head)
+    if not head then return false end
+    local character = player.Character
+    local origin = Camera.CFrame.Position
+    local target = head.Position
+    local direction = target - origin
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = character and {character} or {}
+
+    local result = workspace:Raycast(origin, direction, rayParams)
+    if not result then
+        return true -- nothing blocking
+    end
+    -- Accept hit if the part belongs to the zombie itself
+    local hitModel = result.Instance:FindFirstAncestorOfClass("Model")
+    return hitModel == head.Parent
+end
+
 local function getClosestZombie(enemies, fromPosition)
     local closestZombie
     local closestDistance
@@ -104,10 +125,13 @@ local function getClosestZombie(enemies, fromPosition)
     for _, zombie in pairs(enemies:GetChildren()) do
         if isZombieModel(zombie, enemies) and isZombieAlive(zombie) then
             local head = zombie:FindFirstChild("Head")
-            local distance = (head.Position - fromPosition).Magnitude
-            if not closestDistance or distance < closestDistance then
-                closestDistance = distance
-                closestZombie = zombie
+            -- Only consider zombies with clear line of sight
+            if isHeadVisible(head) then
+                local distance = (head.Position - fromPosition).Magnitude
+                if not closestDistance or distance < closestDistance then
+                    closestDistance = distance
+                    closestZombie = zombie
+                end
             end
         end
     end
@@ -164,13 +188,11 @@ local function fireClosestHeadshot()
     end
 end
 
--- FIX: Usar RenderStepped + IsMouseButtonPressed en lugar de eventos de input
-RunService.RenderStepped:Connect(function()
-    if manualHeadshot and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-        if tick() - lastManualShot >= shootDelay then
-            lastManualShot = tick()
-            fireClosestHeadshot()
-        end
+-- Headshot on Fire: dispara al hacer click solo si hay línea de visión
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 and manualHeadshot then
+        fireClosestHeadshot()
     end
 end)
 
@@ -223,11 +245,14 @@ CombatTab:CreateToggle({
 
                             if isZombieAlive(currentTarget) then
                                 local head = currentTarget:FindFirstChild("Head")
-                                local weapon = getEquippedWeaponName()
-                                local hitPos = head.Position + randomOffset(0.15)
-                                local dmgMult = 0.5 + (math.random() - 0.5) * 0.04
-                                local args = {currentTarget, head, hitPos, dmgMult, weapon}
-                                pcall(function() shootRemote:FireServer(unpack(args)) end)
+                                -- Only fire if head is visible (not behind a wall)
+                                if isHeadVisible(head) then
+                                    local weapon = getEquippedWeaponName()
+                                    local hitPos = head.Position + randomOffset(0.15)
+                                    local dmgMult = 0.5 + (math.random() - 0.5) * 0.04
+                                    local args = {currentTarget, head, hitPos, dmgMult, weapon}
+                                    pcall(function() shootRemote:FireServer(unpack(args)) end)
+                                end
                             else
                                 currentTarget = nil
                             end
