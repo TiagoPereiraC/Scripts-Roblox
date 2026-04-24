@@ -1,4 +1,4 @@
--- Services
+﻿-- Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -11,7 +11,7 @@ local Rayfield = loadstring(game:HttpGet('https://limerbro.github.io/Roblox-Lime
 
 -- UI Window Configuration
 local Window = Rayfield:CreateWindow({
-    Name = "✨ LimerHub Custom ✨ | POLY-Z",
+    Name = "✨ LimerHub ✨ | POLY-Z",
     Icon = 71338090068856,
     LoadingTitle = "Loading...",
     LoadingSubtitle = "Author: LimerBoy",
@@ -51,101 +51,61 @@ task.spawn(function()
     end
 end)
 
--- Auto Headshots
+-- Variables
 local autoKill = false
 local shootDelay = 0.1
 local manualHeadshot = false
 local wallbang = false
-local autoWallbang = false
 local mouse = player:GetMouse()
+local mouseHeld = false
 
-local function getZombieContainer()
-    return workspace:FindFirstChild("Zombies") or workspace:FindFirstChild("Enemies")
-end
-
-local function isZombieModel(model, enemiesFolder)
-    if not model or not model:IsA("Model") then
-        return false
-    end
-
-    if enemiesFolder and model.Parent ~= enemiesFolder then
-        return false
-    end
-
-    if Players:GetPlayerFromCharacter(model) then
-        return false
-    end
-
-    local playersFolder = workspace:FindFirstChild("Players")
-    if playersFolder and playersFolder:FindFirstChild(model.Name) then
-        return false
-    end
-
-    return model:FindFirstChild("Head") ~= nil
-end
-
+-- Headshot on Fire helpers
 local function isZombieAlive(zombie)
-    if not zombie or not zombie.Parent or not isZombieModel(zombie, zombie.Parent) then
-        return false
-    end
-
+    if not zombie or not zombie.Parent then return false end
     local head = zombie:FindFirstChild("Head")
     local humanoid = zombie:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        return humanoid.Health > 0 and head ~= nil
-    end
-
+    if humanoid then return humanoid.Health > 0 and head ~= nil end
     return head ~= nil
 end
 
--- LOS check: raycast from HumanoidRootPart to head, single call only at fire time
 local function isHeadVisible(head, rootPart)
     if not head or not rootPart then return false end
     local origin = rootPart.Position
     local direction = head.Position - origin
-
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     local character = player.Character
     rayParams.FilterDescendantsInstances = character and {character} or {}
-
     local result = workspace:Raycast(origin, direction, rayParams)
     if not result then return true end
-    -- Allow if the ray hit a part of the zombie itself (e.g. torso in the way)
     local hitModel = result.Instance:FindFirstAncestorOfClass("Model")
     return hitModel == head.Parent
 end
 
--- Simple distance-only selection (LOS is only checked at fire time)
 local function getClosestZombie(enemies, fromPosition)
-    local closestZombie
-    local closestDistance
-
+    local closestZombie, closestDistance
     for _, zombie in pairs(enemies:GetChildren()) do
-        if isZombieModel(zombie, enemies) and isZombieAlive(zombie) then
+        if zombie:IsA("Model") and isZombieAlive(zombie) then
             local head = zombie:FindFirstChild("Head")
-            local distance = (head.Position - fromPosition).Magnitude
-            if not closestDistance or distance < closestDistance then
-                closestDistance = distance
-                closestZombie = zombie
+            if head then
+                local distance = (head.Position - fromPosition).Magnitude
+                if not closestDistance or distance < closestDistance then
+                    closestDistance = distance
+                    closestZombie = zombie
+                end
             end
         end
     end
-
     return closestZombie
 end
 
 local function getAimedZombie(enemies)
     local target = mouse and mouse.Target
-    if not target then
-        return nil
-    end
-
+    if not target then return nil end
     local model = target:FindFirstAncestorOfClass("Model")
-    if model and isZombieModel(model, enemies) and isZombieAlive(model) then
+    if model and model:IsA("Model") and isZombieAlive(model) and model.Parent == enemies then
         return model
     end
-
     return nil
 end
 
@@ -158,19 +118,15 @@ local function randomOffset(magnitude)
 end
 
 local function fireClosestHeadshot()
-    local enemies = getZombieContainer()
+    local enemies = workspace:FindFirstChild("Enemies")
     local shootRemote = Remotes:FindFirstChild("ShootEnemy")
     local character = player.Character
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-
-    if not enemies or not shootRemote or not rootPart then
-        return
-    end
+    if not enemies or not shootRemote or not rootPart then return end
 
     local targetZombie = getAimedZombie(enemies) or getClosestZombie(enemies, rootPart.Position)
     local targetHead = targetZombie and targetZombie:FindFirstChild("Head")
 
-    -- Skip LOS check if wallbang is enabled
     if targetZombie and targetHead and (wallbang or isHeadVisible(targetHead, rootPart)) then
         local weapon = getEquippedWeaponName()
         local hitPos = targetHead.Position + randomOffset(0.15)
@@ -183,14 +139,11 @@ local function fireClosestHeadshot()
     end
 end
 
--- Headshot on Fire: dispara una vez al presionar y sigue disparando mientras se mantiene el click
-local mouseHeld = false
-
+-- Headshot on Fire input handler
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if UserInputService:GetFocusedTextBox() then return end
     if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
     if not manualHeadshot then return end
-
     mouseHeld = true
     task.spawn(function()
         while mouseHeld and manualHeadshot do
@@ -241,51 +194,29 @@ CombatTab:CreateToggle({
         if state then
             task.spawn(function()
                 while autoKill do
-                    local enemies = getZombieContainer()
+                    local enemies = workspace:FindFirstChild("Enemies")
                     local shootRemote = Remotes:FindFirstChild("ShootEnemy")
                     if enemies and shootRemote then
-                        local character = player.Character
-                        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-
-                        if rootPart then
-                            for _, zombie in pairs(enemies:GetChildren()) do
-                                if not autoKill then break end
-                                if isZombieModel(zombie, enemies) and isZombieAlive(zombie) then
-                                    local head = zombie:FindFirstChild("Head")
-                                    if autoWallbang or isHeadVisible(head, rootPart) then
-                                        local weapon = getEquippedWeaponName()
-                                        local hitPos = head.Position + randomOffset(0.15)
-                                        local dmgMult = 0.5 + (math.random() - 0.5) * 0.04
-                                        pcall(function() shootRemote:FireServer(zombie, head, hitPos, dmgMult, weapon) end)
-                                    end
+                        local weapon = getEquippedWeaponName()
+                        for _, zombie in pairs(enemies:GetChildren()) do
+                            if zombie:IsA("Model") then
+                                local head = zombie:FindFirstChild("Head")
+                                if head then
+                                    local args = {zombie, head, head.Position, 0.5, weapon}
+                                    pcall(function() shootRemote:FireServer(unpack(args)) end)
                                 end
                             end
                         end
                     end
-                    task.wait(0)
+                    task.wait(shootDelay)
                 end
             end)
         end
     end
 })
 
-local autoWallbangToggle = CombatTab:CreateToggle({
-    Name = "   ↳ 🧱 A través de paredes",
-    CurrentValue = false,
-    Flag = "AutoWallbang",
-    Callback = function(state)
-        autoWallbang = state
-    end
-})
-
-local wallbangToggle = CombatTab:CreateToggle({
-    Name = "   ↳ 🧱 Disparar a través de paredes",
-    CurrentValue = false,
-    Flag = "WallbangHeadshot",
-    Callback = function(state)
-        wallbang = state
-    end
-})
+-- Forward declare so HoF callback can reference it
+local wallbangToggle
 
 CombatTab:CreateToggle({
     Name = "🎯 Headshot on Fire",
@@ -293,11 +224,19 @@ CombatTab:CreateToggle({
     Flag = "HeadshotOnFire",
     Callback = function(state)
         manualHeadshot = state
-        -- Al desactivar Headshot on Fire, apaga también el wallbang
         if not state then
             wallbang = false
             wallbangToggle:Set(false)
         end
+    end
+})
+
+wallbangToggle = CombatTab:CreateToggle({
+    Name = "🧱 Headshot on Fire - A través de paredes",
+    CurrentValue = false,
+    Flag = "WallbangHeadshot",
+    Callback = function(state)
+        wallbang = state
     end
 })
 
@@ -364,15 +303,15 @@ MiscTab:CreateButton({
         local vars = player:FindFirstChild("Variables")
         if not vars then return end
 
-        local ammoAttributes = {  
-            "Primary_Mag",  
-            "Secondary_Mag"  
-        }  
+        local ammoAttributes = {
+            "Primary_Mag",
+            "Secondary_Mag"
+        }
 
-        for _, attr in ipairs(ammoAttributes) do  
-            if vars:GetAttribute(attr) ~= nil then  
-                vars:SetAttribute(attr, 100000000)  
-            end  
+        for _, attr in ipairs(ammoAttributes) do
+            if vars:GetAttribute(attr) ~= nil then
+                vars:SetAttribute(attr, 100000000)
+            end
         end
         Rayfield:Notify({
             Title = "Magazines",
@@ -391,21 +330,21 @@ MiscTab:CreateButton({
         local vars = player:FindFirstChild("Variables")
         if not vars then return end
 
-        local perks = {  
-            "Bandoiler_Perk",  
-            "DoubleUp_Perk",  
-            "Haste_Perk",  
-            "Tank_Perk",  
-            "GasMask_Perk",  
-            "DeadShot_Perk",  
-            "DoubleMag_Perk",  
-            "WickedGrenade_Perk"  
-        }  
+        local perks = {
+            "Bandoiler_Perk",
+            "DoubleUp_Perk",
+            "Haste_Perk",
+            "Tank_Perk",
+            "GasMask_Perk",
+            "DeadShot_Perk",
+            "DoubleMag_Perk",
+            "WickedGrenade_Perk"
+        }
 
-        for _, perk in ipairs(perks) do  
-            if vars:GetAttribute(perk) ~= nil then  
-                vars:SetAttribute(perk, true)  
-            end  
+        for _, perk in ipairs(perks) do
+            if vars:GetAttribute(perk) ~= nil then
+                vars:SetAttribute(perk, true)
+            end
         end
         Rayfield:Notify({
             Title = "Perks",
@@ -422,15 +361,15 @@ MiscTab:CreateButton({
         local vars = player:FindFirstChild("Variables")
         if not vars then return end
 
-        local enchants = {  
-            "Primary_Enhanced",  
-            "Secondary_Enhanced"  
-        }  
+        local enchants = {
+            "Primary_Enhanced",
+            "Secondary_Enhanced"
+        }
 
-        for _, attr in ipairs(enchants) do  
-            if vars:GetAttribute(attr) ~= nil then  
-                vars:SetAttribute(attr, true)  
-            end  
+        for _, attr in ipairs(enchants) do
+            if vars:GetAttribute(attr) ~= nil then
+                vars:SetAttribute(attr, true)
+            end
         end
         Rayfield:Notify({
             Title = "Enhancement",
@@ -447,10 +386,10 @@ MiscTab:CreateButton({
         local gunData = player:FindFirstChild("GunData")
         if not gunData then return end
 
-        for _, value in ipairs(gunData:GetChildren()) do  
-            if value:IsA("StringValue") then  
-                value.Value = "celestial"  
-            end  
+        for _, value in ipairs(gunData:GetChildren()) do
+            if value:IsA("StringValue") then
+                value.Value = "celestial"
+            end
         end
         Rayfield:Notify({
             Title = "Weapons",
@@ -482,7 +421,7 @@ OpenTab:CreateSection("📦 Auto Open Crates")
 OpenTab:CreateDropdown({
     Name = "👕 Outfit Type",
     Options = {
-        "Random", "Hat", "torseaccessory", "legaccessory", "faceaccessory", 
+        "Random", "Hat", "torseaccessory", "legaccessory", "faceaccessory",
         "armaccessory", "backaccessory", "gloves", "shoes", "hair",
         "shirt", "pants", "haircolor", "skincolor", "face"
     },
@@ -602,10 +541,8 @@ RunService.RenderStepped:Connect(function(dt)
                 workspace.Enemies:FindFirstChild("CaptainBoom"),
                 workspace.Enemies:FindFirstChild("Fungarth")
             }
-
             local nearestBoss = nil
             local shortestDistance = math.huge
-
             for _, boss in pairs(bosses) do
                 if boss and boss:FindFirstChild("Head") then
                     local distance = (boss.Head.Position - HRP.Position).Magnitude
@@ -662,14 +599,10 @@ ModTab:CreateSlider({
 ModTab:CreateButton({
     Name = "🛸 TP & Smart Platform",
     Callback = function()
-        local HRP = player.Character and player.Character:WaitForChild("HumanoidRootPart")
-        if not HRP then
-            warn("❌ HumanoidRootPart no encontrado")
-            return
-        end
+        local HRP2 = player.Character and player.Character:WaitForChild("HumanoidRootPart")
+        if not HRP2 then return end
 
-        local currentPos = HRP.Position
-        local targetPos = currentPos + Vector3.new(0, 60, 0)
+        local targetPos = HRP2.Position + Vector3.new(0, 60, 0)
 
         local platform = Instance.new("Part")
         platform.Size = Vector3.new(20, 1, 20)
@@ -680,32 +613,26 @@ ModTab:CreateButton({
         platform.Name = "SmartPlatform"
         platform.Parent = workspace
 
-        HRP.CFrame = CFrame.new(targetPos + Vector3.new(0, 2, 0))
+        HRP2.CFrame = CFrame.new(targetPos + Vector3.new(0, 2, 0))
 
         local lastTouch = tick()
-
         local conn
         conn = RunService.RenderStepped:Connect(function()
             if not platform or not platform.Parent then
                 conn:Disconnect()
                 return
             end
-
             local char = player.Character
             local humanoidRoot = char and char:FindFirstChild("HumanoidRootPart")
             if not humanoidRoot then return end
 
-            local rayOrigin = humanoidRoot.Position
-            local rayDirection = Vector3.new(0, -5, 0)
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterDescendantsInstances = {char}
-            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-
-            local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-            if raycastResult and raycastResult.Instance == platform then
+            local rayParams = RaycastParams.new()
+            rayParams.FilterDescendantsInstances = {char}
+            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+            local result = workspace:Raycast(humanoidRoot.Position, Vector3.new(0, -5, 0), rayParams)
+            if result and result.Instance == platform then
                 lastTouch = tick()
             end
-
             if tick() - lastTouch > 10 then
                 platform:Destroy()
                 conn:Disconnect()
