@@ -55,8 +55,6 @@ end)
 local autoKill = false
 local shootDelay = 0.1
 local manualHeadshot = false
-local manualShotCooldown = 0.08
-local lastManualShot = 0
 
 local function getZombieContainer()
     return workspace:FindFirstChild("Zombies") or workspace:FindFirstChild("Enemies")
@@ -116,6 +114,21 @@ local function getClosestZombie(enemies, fromPosition)
     return closestZombie
 end
 
+local function getAimedZombie(enemies)
+    local mouse = player:GetMouse()
+    local target = mouse and mouse.Target
+    if not target then
+        return nil
+    end
+
+    local model = target:FindFirstAncestorOfClass("Model")
+    if model and isZombieModel(model, enemies) and isZombieAlive(model) then
+        return model
+    end
+
+    return nil
+end
+
 local function fireClosestHeadshot()
     local enemies = getZombieContainer()
     local shootRemote = Remotes:FindFirstChild("ShootEnemy")
@@ -126,27 +139,13 @@ local function fireClosestHeadshot()
         return
     end
 
-    local closestZombie, closestHead, closestDistance
+    local targetZombie = getAimedZombie(enemies) or getClosestZombie(enemies, rootPart.Position)
+    local targetHead = targetZombie and targetZombie:FindFirstChild("Head")
 
-    for _, zombie in pairs(enemies:GetChildren()) do
-        if isZombieModel(zombie, enemies) then
-            local head = zombie:FindFirstChild("Head")
-            local humanoid = zombie:FindFirstChildOfClass("Humanoid")
-            if head and (not humanoid or humanoid.Health > 0) then
-                local distance = (head.Position - rootPart.Position).Magnitude
-                if not closestDistance or distance < closestDistance then
-                    closestDistance = distance
-                    closestZombie = zombie
-                    closestHead = head
-                end
-            end
-        end
-    end
-
-    if closestZombie and closestHead then
+    if targetZombie and targetHead then
         local weapon = getEquippedWeaponName()
         pcall(function()
-            shootRemote:FireServer(closestZombie, closestHead, closestHead.Position, 0.5, weapon)
+            shootRemote:FireServer(targetZombie, targetHead, targetHead.Position, 0.5, weapon)
         end)
     end
 end
@@ -157,11 +156,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local now = tick()
-        if now - lastManualShot >= manualShotCooldown then
-            lastManualShot = now
-            fireClosestHeadshot()
-        end
+        fireClosestHeadshot()
     end
 end)
 
