@@ -181,12 +181,26 @@ local function fireClosestHeadshot()
     end
 end
 
--- Headshot on Fire: InputBegan sin filtro gameProcessed para que funcione con arma equipada
--- Solo ignoramos clicks cuando el usuario está escribiendo en un TextBox
+-- Headshot on Fire: dispara una vez al presionar y sigue disparando mientras se mantiene el click
+local mouseHeld = false
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if UserInputService:GetFocusedTextBox() then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 and manualHeadshot then
-        fireClosestHeadshot()
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    if not manualHeadshot then return end
+
+    mouseHeld = true
+    task.spawn(function()
+        while mouseHeld and manualHeadshot do
+            fireClosestHeadshot()
+            task.wait(shootDelay + (math.random() - 0.5) * shootDelay * 0.25)
+        end
+    end)
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        mouseHeld = false
     end
 end)
 
