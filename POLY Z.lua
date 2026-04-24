@@ -55,6 +55,7 @@ end)
 local autoKill = false
 local shootDelay = 0.1
 local manualHeadshot = false
+local wallbang = false
 local mouse = player:GetMouse()
 
 local function getZombieContainer()
@@ -168,8 +169,8 @@ local function fireClosestHeadshot()
     local targetZombie = getAimedZombie(enemies) or getClosestZombie(enemies, rootPart.Position)
     local targetHead = targetZombie and targetZombie:FindFirstChild("Head")
 
-    -- Only fire if the head has clear line of sight (not behind a wall)
-    if targetZombie and targetHead and isHeadVisible(targetHead, rootPart) then
+    -- Skip LOS check if wallbang is enabled
+    if targetZombie and targetHead and (wallbang or isHeadVisible(targetHead, rootPart)) then
         local weapon = getEquippedWeaponName()
         local hitPos = targetHead.Position + randomOffset(0.15)
         local dmgMult = 0.5 + (math.random() - 0.5) * 0.04
@@ -274,12 +275,26 @@ CombatTab:CreateToggle({
     end
 })
 
+local wallbangToggle = CombatTab:CreateToggle({
+    Name = "   ↳ 🧱 Disparar a través de paredes",
+    CurrentValue = false,
+    Flag = "WallbangHeadshot",
+    Callback = function(state)
+        wallbang = state
+    end
+})
+
 CombatTab:CreateToggle({
     Name = "🎯 Headshot on Fire",
     CurrentValue = false,
     Flag = "HeadshotOnFire",
     Callback = function(state)
         manualHeadshot = state
+        -- Al desactivar Headshot on Fire, apaga también el wallbang
+        if not state then
+            wallbang = false
+            wallbangToggle:Set(false)
+        end
     end
 })
 
