@@ -56,7 +56,6 @@ local autoKill = false
 local shootDelay = 0.1
 local manualHeadshot = false
 local mouse = player:GetMouse()
-local Camera = workspace.CurrentCamera
 
 local function getZombieContainer()
     return workspace:FindFirstChild("Zombies") or workspace:FindFirstChild("Enemies")
@@ -97,27 +96,25 @@ local function isZombieAlive(zombie)
     return head ~= nil
 end
 
--- Line-of-sight check: returns true only if head is not blocked by terrain/walls
-local function isHeadVisible(head)
-    if not head then return false end
-    local character = player.Character
-    local origin = Camera.CFrame.Position
-    local target = head.Position
-    local direction = target - origin
+-- LOS check: raycast from HumanoidRootPart to head, single call only at fire time
+local function isHeadVisible(head, rootPart)
+    if not head or not rootPart then return false end
+    local origin = rootPart.Position
+    local direction = head.Position - origin
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    local character = player.Character
     rayParams.FilterDescendantsInstances = character and {character} or {}
 
     local result = workspace:Raycast(origin, direction, rayParams)
-    if not result then
-        return true -- nothing blocking
-    end
-    -- Accept hit if the part belongs to the zombie itself
+    if not result then return true end
+    -- Allow if the ray hit a part of the zombie itself (e.g. torso in the way)
     local hitModel = result.Instance:FindFirstAncestorOfClass("Model")
     return hitModel == head.Parent
 end
 
+-- Simple distance-only selection (LOS is only checked at fire time)
 local function getClosestZombie(enemies, fromPosition)
     local closestZombie
     local closestDistance
@@ -125,13 +122,10 @@ local function getClosestZombie(enemies, fromPosition)
     for _, zombie in pairs(enemies:GetChildren()) do
         if isZombieModel(zombie, enemies) and isZombieAlive(zombie) then
             local head = zombie:FindFirstChild("Head")
-            -- Only consider zombies with clear line of sight
-            if isHeadVisible(head) then
-                local distance = (head.Position - fromPosition).Magnitude
-                if not closestDistance or distance < closestDistance then
-                    closestDistance = distance
-                    closestZombie = zombie
-                end
+            local distance = (head.Position - fromPosition).Magnitude
+            if not closestDistance or distance < closestDistance then
+                closestDistance = distance
+                closestZombie = zombie
             end
         end
     end
@@ -174,11 +168,10 @@ local function fireClosestHeadshot()
     local targetZombie = getAimedZombie(enemies) or getClosestZombie(enemies, rootPart.Position)
     local targetHead = targetZombie and targetZombie:FindFirstChild("Head")
 
-    if targetZombie and targetHead then
+    -- Only fire if the head has clear line of sight (not behind a wall)
+    if targetZombie and targetHead and isHeadVisible(targetHead, rootPart) then
         local weapon = getEquippedWeaponName()
-        -- Slight random offset on hit position to avoid exact-center pattern detection
         local hitPos = targetHead.Position + randomOffset(0.15)
-        -- Small variance on damage multiplier
         local dmgMult = 0.5 + (math.random() - 0.5) * 0.04
         task.delay(math.random() * 0.03, function()
             pcall(function()
@@ -188,9 +181,10 @@ local function fireClosestHeadshot()
     end
 end
 
--- Headshot on Fire: dispara al hacer click solo si hay línea de visión
+-- Headshot on Fire: InputBegan sin filtro gameProcessed para que funcione con arma equipada
+-- Solo ignoramos clicks cuando el usuario está escribiendo en un TextBox
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
+    if UserInputService:GetFocusedTextBox() then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 and manualHeadshot then
         fireClosestHeadshot()
     end
@@ -246,7 +240,7 @@ CombatTab:CreateToggle({
                             if isZombieAlive(currentTarget) then
                                 local head = currentTarget:FindFirstChild("Head")
                                 -- Only fire if head is visible (not behind a wall)
-                                if isHeadVisible(head) then
+                                if isHeadVisible(head, rootPart) then
                                     local weapon = getEquippedWeaponName()
                                     local hitPos = head.Position + randomOffset(0.15)
                                     local dmgMult = 0.5 + (math.random() - 0.5) * 0.04
