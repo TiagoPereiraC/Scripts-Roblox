@@ -150,12 +150,11 @@ local function fireClosestHeadshot()
     end
 end
 
-mouse.Button1Down:Connect(function()
-    if not manualHeadshot then
-        return
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 and manualHeadshot then
+        fireClosestHeadshot()
     end
-
-    fireClosestHeadshot()
 end)
 
 -- Text input for shot delay
