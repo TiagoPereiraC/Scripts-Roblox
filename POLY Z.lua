@@ -55,6 +55,7 @@ end)
 local autoKill = false
 local shootDelay = 0.1
 local manualHeadshot = false
+local mouse = player:GetMouse()
 
 local function getZombieContainer()
     return workspace:FindFirstChild("Zombies") or workspace:FindFirstChild("Enemies")
@@ -115,7 +116,6 @@ local function getClosestZombie(enemies, fromPosition)
 end
 
 local function getAimedZombie(enemies)
-    local mouse = player:GetMouse()
     local target = mouse and mouse.Target
     if not target then
         return nil
@@ -150,14 +150,12 @@ local function fireClosestHeadshot()
     end
 end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed or not manualHeadshot then
+mouse.Button1Down:Connect(function()
+    if not manualHeadshot then
         return
     end
 
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        fireClosestHeadshot()
-    end
+    fireClosestHeadshot()
 end)
 
 -- Text input for shot delay
