@@ -129,6 +129,14 @@ local function getAimedZombie(enemies)
     return nil
 end
 
+local function randomOffset(magnitude)
+    return Vector3.new(
+        (math.random() - 0.5) * 2 * magnitude,
+        (math.random() - 0.5) * 2 * magnitude,
+        (math.random() - 0.5) * 2 * magnitude
+    )
+end
+
 local function fireClosestHeadshot()
     local enemies = getZombieContainer()
     local shootRemote = Remotes:FindFirstChild("ShootEnemy")
@@ -144,8 +152,14 @@ local function fireClosestHeadshot()
 
     if targetZombie and targetHead then
         local weapon = getEquippedWeaponName()
-        pcall(function()
-            shootRemote:FireServer(targetZombie, targetHead, targetHead.Position, 0.5, weapon)
+        -- Slight random offset on hit position to avoid exact-center pattern detection
+        local hitPos = targetHead.Position + randomOffset(0.15)
+        -- Small variance on damage multiplier
+        local dmgMult = 0.5 + (math.random() - 0.5) * 0.04
+        task.delay(math.random() * 0.03, function()
+            pcall(function()
+                shootRemote:FireServer(targetZombie, targetHead, hitPos, dmgMult, weapon)
+            end)
         end)
     end
 end
@@ -210,14 +224,17 @@ CombatTab:CreateToggle({
                             if isZombieAlive(currentTarget) then
                                 local head = currentTarget:FindFirstChild("Head")
                                 local weapon = getEquippedWeaponName()
-                                local args = {currentTarget, head, head.Position, 0.5, weapon}
+                                local hitPos = head.Position + randomOffset(0.15)
+                                local dmgMult = 0.5 + (math.random() - 0.5) * 0.04
+                                local args = {currentTarget, head, hitPos, dmgMult, weapon}
                                 pcall(function() shootRemote:FireServer(unpack(args)) end)
                             else
                                 currentTarget = nil
                             end
                         end
                     end
-                    task.wait(shootDelay)
+                    -- Random jitter on fire rate to avoid mechanical timing detection
+                    task.wait(shootDelay + (math.random() - 0.5) * shootDelay * 0.3)
                 end
             end)
         end
