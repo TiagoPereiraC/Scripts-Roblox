@@ -56,6 +56,7 @@ local autoKill = false
 local shootDelay = 0.1
 local manualHeadshot = false
 local wallbang = false
+local autoWallbang = false
 local mouse = player:GetMouse()
 
 local function getZombieContainer()
@@ -239,7 +240,6 @@ CombatTab:CreateToggle({
         autoKill = state
         if state then
             task.spawn(function()
-                local currentTarget
                 while autoKill do
                     local enemies = getZombieContainer()
                     local shootRemote = Remotes:FindFirstChild("ShootEnemy")
@@ -248,30 +248,33 @@ CombatTab:CreateToggle({
                         local rootPart = character and character:FindFirstChild("HumanoidRootPart")
 
                         if rootPart then
-                            if not isZombieAlive(currentTarget) then
-                                currentTarget = getClosestZombie(enemies, rootPart.Position)
-                            end
-
-                            if isZombieAlive(currentTarget) then
-                                local head = currentTarget:FindFirstChild("Head")
-                                -- Only fire if head is visible (not behind a wall)
-                                if isHeadVisible(head, rootPart) then
-                                    local weapon = getEquippedWeaponName()
-                                    local hitPos = head.Position + randomOffset(0.15)
-                                    local dmgMult = 0.5 + (math.random() - 0.5) * 0.04
-                                    local args = {currentTarget, head, hitPos, dmgMult, weapon}
-                                    pcall(function() shootRemote:FireServer(unpack(args)) end)
+                            for _, zombie in pairs(enemies:GetChildren()) do
+                                if not autoKill then break end
+                                if isZombieModel(zombie, enemies) and isZombieAlive(zombie) then
+                                    local head = zombie:FindFirstChild("Head")
+                                    if autoWallbang or isHeadVisible(head, rootPart) then
+                                        local weapon = getEquippedWeaponName()
+                                        local hitPos = head.Position + randomOffset(0.15)
+                                        local dmgMult = 0.5 + (math.random() - 0.5) * 0.04
+                                        pcall(function() shootRemote:FireServer(zombie, head, hitPos, dmgMult, weapon) end)
+                                    end
                                 end
-                            else
-                                currentTarget = nil
                             end
                         end
                     end
-                    -- Random jitter on fire rate to avoid mechanical timing detection
-                    task.wait(shootDelay + (math.random() - 0.5) * shootDelay * 0.3)
+                    task.wait(0)
                 end
             end)
         end
+    end
+})
+
+local autoWallbangToggle = CombatTab:CreateToggle({
+    Name = "   ↳ 🧱 A través de paredes",
+    CurrentValue = false,
+    Flag = "AutoWallbang",
+    Callback = function(state)
+        autoWallbang = state
     end
 })
 
