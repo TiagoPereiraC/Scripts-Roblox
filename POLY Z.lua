@@ -56,6 +56,7 @@ local autoKill = false
 local shootDelay = 0.1
 local manualHeadshot = false
 local mouse = player:GetMouse()
+local lastManualShot = 0
 
 local function getZombieContainer()
     return workspace:FindFirstChild("Zombies") or workspace:FindFirstChild("Enemies")
@@ -66,7 +67,6 @@ local function isZombieModel(model, enemiesFolder)
         return false
     end
 
-    -- Keep old behavior: target only NPCs that live in enemy containers.
     if enemiesFolder and model.Parent ~= enemiesFolder then
         return false
     end
@@ -150,10 +150,13 @@ local function fireClosestHeadshot()
     end
 end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 and manualHeadshot then
-        fireClosestHeadshot()
+-- FIX: Usar RenderStepped + IsMouseButtonPressed en lugar de eventos de input
+RunService.RenderStepped:Connect(function()
+    if manualHeadshot and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        if tick() - lastManualShot >= shootDelay then
+            lastManualShot = tick()
+            fireClosestHeadshot()
+        end
     end
 end)
 
@@ -370,7 +373,6 @@ MiscTab:CreateButton({
     end
 })
 
-
 MiscTab:CreateButton({
     Name = "💫 Celestial Weapons",
     Callback = function()
@@ -394,9 +396,8 @@ MiscTab:CreateButton({
 -- Open Tab
 local OpenTab = Window:CreateTab("🎁 Crates", "Gift")
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local selectedQuantity = 1
-local selectedOutfitType = "Random" -- для Outfit кейсів
+local selectedOutfitType = "Random"
 
 OpenTab:CreateDropdown({
     Name = "🔢 Open Quantity",
@@ -410,7 +411,6 @@ OpenTab:CreateDropdown({
 
 OpenTab:CreateSection("📦 Auto Open Crates")
 
--- 🎽 Випадаючий список типів для Outfit кейсів
 OpenTab:CreateDropdown({
     Name = "👕 Outfit Type",
     Options = {
@@ -424,7 +424,6 @@ OpenTab:CreateDropdown({
     end,
 })
 
--- 🕶️ Camo Crates
 local autoOpenCamo = false
 OpenTab:CreateToggle({
     Name = "🕶️ Camo Crates",
@@ -447,7 +446,6 @@ OpenTab:CreateToggle({
     end
 })
 
--- 👕 Outfit Crates
 local autoOpenOutfit = false
 OpenTab:CreateToggle({
     Name = "👕 Outfit Crates",
@@ -470,7 +468,6 @@ OpenTab:CreateToggle({
     end
 })
 
--- 🐾 Pet Crates
 local autoOpenPet = false
 OpenTab:CreateToggle({
     Name = "🐾 Pet Crates",
@@ -493,7 +490,6 @@ OpenTab:CreateToggle({
     end
 })
 
--- 🔫 Weapon Crates
 local autoOpenGun = false
 OpenTab:CreateToggle({
     Name = "🔫 Weapon Crates",
@@ -516,26 +512,20 @@ OpenTab:CreateToggle({
     end
 })
 
-
 -- Mod Tab
 local ModTab = Window:CreateTab("🌀 Mods", "Skull")
 
--- ⬇ Змінні оголошуються глобально (всередині скрипта, але поза функціями)
 local spinning = false
 local angle = 0
-local speed = 5      -- ✅ глобально
-local radius = 15    -- ✅ глобально
+local speed = 5
+local radius = 15
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local player = Players.LocalPlayer
 local HRP = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 
 player.CharacterAdded:Connect(function(char)
     HRP = char:WaitForChild("HumanoidRootPart")
 end)
 
--- 🔁 Головне коло
 RunService.RenderStepped:Connect(function(dt)
     if spinning and HRP then
         local function findNearestBoss()
@@ -562,16 +552,15 @@ RunService.RenderStepped:Connect(function(dt)
 
         local boss = findNearestBoss()
         if boss and boss:FindFirstChild("Head") then
-            angle += dt * speed  -- ✅ використовує глобальну змінну
+            angle += dt * speed
             local bossPos = boss.Head.Position
-            local offset = Vector3.new(math.cos(angle), 0, math.sin(angle)) * radius -- ✅ радіус
+            local offset = Vector3.new(math.cos(angle), 0, math.sin(angle)) * radius
             local orbitPos = bossPos + offset
             HRP.CFrame = CFrame.new(Vector3.new(orbitPos.X, bossPos.Y, orbitPos.Z), bossPos)
         end
     end
 end)
 
--- 🔘 Кнопка в меню
 ModTab:CreateToggle({
     Name = "🌪️ Orbit Around Boss",
     CurrentValue = false,
@@ -580,7 +569,6 @@ ModTab:CreateToggle({
     end
 })
 
--- ⚙️ Слайдер швидкості
 ModTab:CreateSlider({
     Name = "⚡ Rotation Speed",
     Range = {1, 20},
@@ -588,11 +576,10 @@ ModTab:CreateSlider({
     Suffix = "x",
     CurrentValue = 5,
     Callback = function(val)
-        speed = val   -- ✅ оновлює глобальну змінну
+        speed = val
     end
 })
 
--- 📏 Слайдер радіуса
 ModTab:CreateSlider({
     Name = "📏 Orbit Radius",
     Range = {5, 100},
@@ -600,28 +587,22 @@ ModTab:CreateSlider({
     Suffix = "units",
     CurrentValue = 15,
     Callback = function(val)
-        radius = val  -- ✅ оновлює глобальну змінну
+        radius = val
     end
 })
-
 
 ModTab:CreateButton({
     Name = "🛸 TP & Smart Platform",
     Callback = function()
-        local Players = game:GetService("Players")
-        local RunService = game:GetService("RunService")
-        local player = Players.LocalPlayer
         local HRP = player.Character and player.Character:WaitForChild("HumanoidRootPart")
-
         if not HRP then
-            warn("❌ HumanoidRootPart не знайдено")
+            warn("❌ HumanoidRootPart no encontrado")
             return
         end
 
         local currentPos = HRP.Position
         local targetPos = currentPos + Vector3.new(0, 60, 0)
 
-        -- 🧱 Створюємо платформу
         local platform = Instance.new("Part")
         platform.Size = Vector3.new(20, 1, 20)
         platform.Anchored = true
@@ -631,14 +612,10 @@ ModTab:CreateButton({
         platform.Name = "SmartPlatform"
         platform.Parent = workspace
 
-        -- ⏫ Телепорт гравця трохи вище платформи
         HRP.CFrame = CFrame.new(targetPos + Vector3.new(0, 2, 0))
 
-        -- ⏱️ Таймер самознищення, коли гравець сходить
-        local isStanding = true
         local lastTouch = tick()
 
-        -- Перевірка кожен кадр
         local conn
         conn = RunService.RenderStepped:Connect(function()
             if not platform or not platform.Parent then
@@ -658,11 +635,9 @@ ModTab:CreateButton({
 
             local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
             if raycastResult and raycastResult.Instance == platform then
-                -- Гравець стоїть на платформі
                 lastTouch = tick()
             end
 
-            -- Якщо пройшло більше 10 секунд після того, як гравець стояв — видалити
             if tick() - lastTouch > 10 then
                 platform:Destroy()
                 conn:Disconnect()
@@ -670,9 +645,6 @@ ModTab:CreateButton({
         end)
     end
 })
-
-
-
 
 -- Load config
 Rayfield:LoadConfiguration()
